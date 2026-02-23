@@ -1,0 +1,30 @@
+# WatchClaw Configuration
+
+# Paths
+log_dir: /tmp/openclaw
+action_notice: /tmp/watchclaw/action.log
+rules_path: null  # Uses bundled default-rules.yaml if null
+
+# Watch directories (glob patterns)
+watch_dirs:
+  - ~/.openclaw/workspace-*
+
+# Polling interval in seconds
+poll_interval: 2.0
+
+# Taint tracking
+taint_half_life: 300.0  # 5 minutes
+
+# Discord webhook (set to your URL)
+discord_webhook_url: null
+
+# Anomaly thresholds
+thresholds:
+  normal: 0.3
+  notice: 0.5
+  alert: 0.7
+
+# LLM auditor (stub for MVP)
+auditor:
+  enabled: false
+  api_key: null

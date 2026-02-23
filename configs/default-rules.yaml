@@ -1,0 +1,178 @@
+rules:
+  - id: WC-HARD-001
+    name: Block watchclaw modification
+    description: Prevent agents from modifying WatchClaw's own files
+    severity: critical
+    action: block
+    conditions:
+      action_type:
+        - file_write
+      target_pattern: "watchclaw"
+
+  - id: WC-HARD-002
+    name: Cognitive file write
+    description: Alert when agents modify identity/cognitive files
+    severity: high
+    action: alert
+    conditions:
+      action_type:
+        - file_write
+      target_pattern: "(SOUL|IDENTITY|AGENTS|CLAUDE|SYSTEM|MEMORY)\\.md"
+
+  - id: WC-HARD-003
+    name: Obfuscated command
+    description: Alert on commands using obfuscation techniques
+    severity: high
+    action: alert
+    conditions:
+      action_type:
+        - exec
+      command_pattern: "(base64\\s+-d.*\\||eval\\s+\\$\\(|\\bsh\\s+-c\\s+['\"].*\\$|python\\s+-c\\s+['\"].*exec|curl\\s+.*\\|\\s*(ba)?sh)"
+
+  - id: WC-HARD-004
+    name: Bulk credential access
+    description: Alert on rapid access to multiple credential files
+    severity: high
+    action: alert
+    conditions:
+      action_type:
+        - file_read
+        - file_write
+      target_pattern: "(\\.(env|key|pem|p12|pfx|credentials|secret|token)$|\\.env\\.|id_(rsa|ed25519|ecdsa)|credentials\\.json|secrets\\.(ya?ml|json)|service.account)"
+    count_within:
+      count: 3
+      seconds: 60
+
+  - id: WC-HARD-005
+    name: Prompt injection pattern
+    description: Alert on known prompt injection patterns in content
+    severity: high
+    action: alert
+    conditions:
+      content_match: "(ignore\\s+(previous|all|above)\\s+(instructions?|prompts?)|you\\s+are\\s+now\\s+|system\\s*:\\s*you\\s+are|IMPORTANT:\\s*override|</?(system|user|assistant)>)"
+
+  # --- Data exfiltration patterns ---
+
+  - id: WC-HARD-006
+    name: Sensitive file read followed by network request
+    description: Reading credential files then making HTTP requests
+    severity: critical
+    action: alert
+    conditions:
+      sequence:
+        - action_type: file_read
+          target_pattern: "\\.(env|key|pem|credentials|secret|token)$"
+        - action_type:
+            - web_fetch
+            - exec
+          within_seconds: 120
+
+  # --- Memory poisoning ---
+
+  - id: WC-HARD-007
+    name: Memory file modification
+    description: Agent modifying its own memory files
+    severity: high
+    action: alert
+    conditions:
+      action_type:
+        - file_write
+      target_pattern: "(MEMORY|memory/.*)\\.md$"
+      taint_source: EXTERNAL
+
+  # --- SSH key access ---
+
+  - id: WC-HARD-008
+    name: SSH private key access
+    description: Block agents from reading SSH private keys
+    severity: critical
+    action: block
+    conditions:
+      action_type:
+        - file_read
+      target_pattern: "\\.ssh/(id_rsa|id_ed25519|id_ecdsa)$"
+
+  # --- Gateway config tampering ---
+
+  - id: WC-HARD-009
+    name: OpenClaw config modification
+    description: Block agents from modifying OpenClaw gateway configuration
+    severity: critical
+    action: block
+    conditions:
+      action_type:
+        - file_write
+      target_pattern: "(openclaw\\.json|gateway\\.json|\\.openclaw/config)"
+
+  # --- Direct IP network request ---
+
+  - id: WC-HARD-010
+    name: Direct IP network request
+    description: Network requests to raw IPs (bypassing DNS)
+    severity: high
+    action: alert
+    conditions:
+      action_type:
+        - web_fetch
+        - exec
+      target_pattern: "https?://\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}"
+
+  # --- DNS exfiltration ---
+
+  - id: WC-HARD-011
+    name: Suspicious DNS-like exfiltration
+    description: Commands that may exfiltrate data via DNS lookups
+    severity: high
+    action: alert
+    conditions:
+      action_type:
+        - exec
+      command_pattern: "(dig|nslookup|host)\\s+.*\\."
+
+  # --- Reverse shell ---
+
+  - id: WC-HARD-012
+    name: Reverse shell attempt
+    description: Attempts to establish reverse shell connections
+    severity: critical
+    action: block
+    conditions:
+      action_type:
+        - exec
+      command_pattern: "(nc|ncat|netcat)\\s+.*-e|/dev/tcp/|bash\\s+-i\\s+>&"
+
+  # --- Supply chain: package installation ---
+
+  - id: WC-HARD-013
+    name: Package installation
+    description: Installing packages from external registries
+    severity: medium
+    action: alert
+    conditions:
+      action_type:
+        - exec
+      command_pattern: "(pip|npm|yarn|cargo)\\s+(install|add)\\s+"
+
+  # --- Scheduled task creation ---
+
+  - id: WC-HARD-014
+    name: Scheduled task creation
+    description: Creating cron jobs or scheduled tasks for persistence
+    severity: high
+    action: alert
+    conditions:
+      action_type:
+        - exec
+      command_pattern: "(crontab|\\bat\\s+|schtasks)"
+
+  # --- Large file exfiltration ---
+
+  - id: WC-HARD-015
+    name: Large file upload
+    description: Uploading files via curl, wget, scp, or rsync
+    severity: high
+    action: alert
+    conditions:
+      action_type:
+        - exec
+      command_pattern: "(curl|wget|scp|rsync).*\\s(-F\\b|--upload\\b|-T\\b|--data-binary)"

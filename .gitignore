@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Pytest
+.pytest_cache/
+
+# WatchClaw runtime logs
+/tmp/watchclaw/
+*.log
+
+# Dev state files
+dev/state.json
+dev/progress.json
+dev/tasks/*.done
+
+# Internal development files (not for public repo)
+dev/
+docs/dev-plan.md

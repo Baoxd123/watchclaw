@@ -37,7 +37,7 @@ class TestRuleEngine:
         engine.load_rules(RULES_PATH)
         assert len(engine.rules) >= 5
 
-    def test_watchclaw_modification_blocked(self):
+    def test_watchclaw_modification_alert(self):
         engine = RuleEngine()
         engine.load_rules(RULES_PATH)
         event = _make_event(
@@ -46,7 +46,7 @@ class TestRuleEngine:
         )
         matches = engine.evaluate(event)
         assert any(m.rule_id == "WC-HARD-001" for m in matches)
-        assert any(m.action == "block" for m in matches)
+        assert any(m.action == "alert" for m in matches)
 
     def test_cognitive_file_write_alert(self):
         engine = RuleEngine()
@@ -169,7 +169,7 @@ class TestRuleEngine:
 
     # --- WC-HARD-008: SSH key access ---
 
-    def test_ssh_key_read_blocked(self):
+    def test_ssh_key_read_alert(self):
         engine = RuleEngine()
         engine.load_rules(RULES_PATH)
         event = _make_event(
@@ -178,7 +178,7 @@ class TestRuleEngine:
         )
         matches = engine.evaluate(event)
         assert any(m.rule_id == "WC-HARD-008" for m in matches)
-        assert any(m.action == "block" for m in matches)
+        assert any(m.action == "alert" for m in matches)
 
     def test_ssh_ed25519_blocked(self):
         engine = RuleEngine()
@@ -202,7 +202,7 @@ class TestRuleEngine:
 
     # --- WC-HARD-009: OpenClaw config modification ---
 
-    def test_openclaw_config_write_blocked(self):
+    def test_openclaw_config_write_alert(self):
         engine = RuleEngine()
         engine.load_rules(RULES_PATH)
         event = _make_event(
@@ -211,7 +211,7 @@ class TestRuleEngine:
         )
         matches = engine.evaluate(event)
         assert any(m.rule_id == "WC-HARD-009" for m in matches)
-        assert any(m.action == "block" for m in matches)
+        assert any(m.action == "alert" for m in matches)
 
     # --- WC-HARD-010: Direct IP network request ---
 
@@ -259,7 +259,7 @@ class TestRuleEngine:
 
     # --- WC-HARD-012: Reverse shell ---
 
-    def test_reverse_shell_nc_blocked(self):
+    def test_reverse_shell_nc_alert(self):
         engine = RuleEngine()
         engine.load_rules(RULES_PATH)
         event = _make_event(
@@ -268,7 +268,7 @@ class TestRuleEngine:
         )
         matches = engine.evaluate(event)
         assert any(m.rule_id == "WC-HARD-012" for m in matches)
-        assert any(m.action == "block" for m in matches)
+        assert any(m.action == "alert" for m in matches)
 
     def test_reverse_shell_bash_blocked(self):
         engine = RuleEngine()

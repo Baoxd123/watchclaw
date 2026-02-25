@@ -126,7 +126,7 @@ class TestRulesCommand:
         assert "WC-HARD-004" in output
         assert "WC-HARD-005" in output
         assert "critical" in output
-        assert "block" in output
+        assert "alert" in output
 
     def test_rules_test_matching_event(self, tmp_path):
         """Verify --test correctly matches an event against rules."""

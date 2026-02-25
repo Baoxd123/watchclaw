@@ -205,6 +205,10 @@ WatchClaw v0.1 works around this by extracting file paths and URLs from `exec` s
 
 WatchClaw observes and alerts. It does not block. This is intentional — false-positive blocking in an AI agent monitoring tool causes more harm than it prevents.
 
+### Behavioral Profiles Are Not Persisted
+
+Per-agent behavioral baselines are held in memory and reset when WatchClaw restarts. After a restart, each agent re-enters a cold-start period (approximately the first 20 minutes) where anomaly scoring is dampened. This creates a detection gap: an attacker who terminates and restarts WatchClaw before executing an attack can operate during the cold-start window with reduced detection probability. Process supervision (systemd, launchd) is recommended to minimize restart windows.
+
 ---
 
 ## Roadmap

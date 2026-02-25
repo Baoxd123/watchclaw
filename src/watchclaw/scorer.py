@@ -23,10 +23,18 @@ THRESHOLD_NORMAL = 0.3
 THRESHOLD_NOTICE = 0.5
 THRESHOLD_ALERT = 0.7
 
-# Known-bad domains for destination threat intel (proposal 3.2.2, tier 3)
+# High-confidence malicious domains — score 1.0
 KNOWN_BAD_DOMAINS: set[str] = {
-    "evil-exfil.com", "pastebin.com", "transfer.sh", "ngrok.io",
+    "evil-exfil.com",
     "requestbin.net", "hookbin.com", "burpcollaborator.net",
+}
+
+# Suspicious but legitimate-use-possible domains — score 0.6
+# These are commonly used in attacks but also have benign uses.
+# They contribute destination_anomaly only when combined with other signals.
+SUSPICIOUS_DOMAINS: set[str] = {
+    "pastebin.com", "transfer.sh", "ngrok.io", "ngrok-free.app",
+    "webhook.site", "pipedream.net", "beeceptor.com",
 }
 
 # Suspicious TLDs commonly used by newly-registered throwaway domains
@@ -182,6 +190,9 @@ class AnomalyScorer:
             if domain in KNOWN_BAD_DOMAINS:
                 dest_val = 1.0
                 dest_reason = f"Domain: {domain}, known_bad"
+            elif domain in SUSPICIOUS_DOMAINS:
+                dest_val = 0.6
+                dest_reason = f"Domain: {domain}, suspicious (dual-use)"
             elif domain in profile.common_domains:
                 dest_val = 0.1
                 dest_reason = f"Domain: {domain}, known"

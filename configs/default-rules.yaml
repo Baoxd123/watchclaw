@@ -1,9 +1,16 @@
+# WatchClaw Hard Rules
+#
+# NOTE: WatchClaw v0.1 is alert-only (monitoring philosophy, like Zeek).
+# The `action` field is parsed but only `alert` is currently enforced.
+# `block` is reserved for a future intercepting mode (v0.2 plugin architecture).
+# All rules currently result in alerts regardless of action value.
+
 rules:
   - id: WC-HARD-001
-    name: Block watchclaw modification
-    description: Prevent agents from modifying WatchClaw's own files
+    name: WatchClaw self-modification
+    description: Alert when agents attempt to modify WatchClaw's own files
     severity: critical
-    action: block
+    action: alert
     conditions:
       action_type:
         - file_write
@@ -84,9 +91,9 @@ rules:
 
   - id: WC-HARD-008
     name: SSH private key access
-    description: Block agents from reading SSH private keys
+    description: Alert when agents read SSH private keys
     severity: critical
-    action: block
+    action: alert
     conditions:
       action_type:
         - file_read
@@ -96,9 +103,9 @@ rules:
 
   - id: WC-HARD-009
     name: OpenClaw config modification
-    description: Block agents from modifying OpenClaw gateway configuration
+    description: Alert when agents modify OpenClaw gateway configuration
     severity: critical
-    action: block
+    action: alert
     conditions:
       action_type:
         - file_write
@@ -133,9 +140,9 @@ rules:
 
   - id: WC-HARD-012
     name: Reverse shell attempt
-    description: Attempts to establish reverse shell connections
+    description: Alert on reverse shell connection attempts
     severity: critical
-    action: block
+    action: alert
     conditions:
       action_type:
         - exec

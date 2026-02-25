@@ -15,6 +15,63 @@ from watchclaw.models import ActionEvent, ActionType, TaintLevel
 
 logger = logging.getLogger(__name__)
 
+# --- Exec command analysis helpers (used by parser, scorer, taint) ---
+
+import re as _re_module
+
+_RE_FILE_READ_CMD = _re_module.compile(
+    r"^(?:cat|head|tail|less|more|grep|awk|sed|cut)\b"
+)
+_RE_URL_IN_CMD = _re_module.compile(r"https?://[^\s|>\"']+")
+_RE_CURL_WGET_CMD = _re_module.compile(r"^(?:curl|wget)\b")
+_RE_DOMAIN_FROM_URL = _re_module.compile(r"https?://([^/\s:]+)")
+
+
+def _extract_file_from_exec(cmd: str) -> str | None:
+    """Extract file path from exec commands that read files.
+
+    Recognizes: cat, head, tail, less, more, grep, awk, sed, cut.
+    Returns the file path argument, or None.
+    """
+    cmd = cmd.strip()
+    if not _RE_FILE_READ_CMD.match(cmd):
+        return None
+    parts = cmd.split()
+    if len(parts) < 2:
+        return None
+    # Search from the end for a path-like argument (skip flags)
+    for part in reversed(parts[1:]):
+        if part.startswith("-"):
+            continue
+        # Absolute or home-relative paths
+        if part.startswith(("/", "~")):
+            return part
+        # Relative paths with directory separator
+        if "/" in part:
+            return part
+        # Known sensitive file names or extensions
+        if _re_module.search(
+            r"(?:credentials|password|secret|key|token|id_rsa|id_ed25519"
+            r"|\.env|\.pem|\.p12|\.json|\.yaml|\.yml"
+            r"|SOUL\.md|MEMORY\.md|USER\.md|\.ssh)",
+            part,
+            _re_module.IGNORECASE,
+        ):
+            return part
+    return None
+
+
+def _extract_url_from_exec(cmd: str) -> str | None:
+    """Extract URL from exec commands (curl, wget, or any URL in command).
+
+    Returns the first http(s) URL found, or None.
+    """
+    m = _RE_URL_IN_CMD.search(cmd)
+    if m:
+        url = m.group(0).rstrip(")")
+        return url
+    return None
+
 
 class OpenClawLogParser:
     """Parse OpenClaw gateway JSONL log files.
@@ -199,6 +256,38 @@ class OpenClawLogParser:
             return [event]
         return []
 
+    @staticmethod
+    def _enrich_exec_event(event: ActionEvent) -> list[ActionEvent]:
+        """Post-process an exec event: reclassify file reads and URL fetches.
+
+        - cat/head/tail/less/more/grep/awk/sed/cut with a file → FILE_READ
+        - curl/wget as primary command with a URL → WEB_FETCH
+        """
+        cmd = event.target
+        if not cmd or cmd in ("exec", "process"):
+            return [event]
+
+        # Check for file-reading commands
+        file_path = _extract_file_from_exec(cmd)
+        if file_path:
+            event.action_type = ActionType.FILE_READ
+            event.args["original_cmd"] = cmd
+            event.target = file_path
+            return [event]
+
+        # Check for curl/wget as primary command → reclassify as WEB_FETCH
+        url = _extract_url_from_exec(cmd)
+        if url and _RE_CURL_WGET_CMD.match(cmd.strip()):
+            domain_match = _RE_DOMAIN_FROM_URL.search(url)
+            domain = domain_match.group(1) if domain_match else ""
+            event.action_type = ActionType.WEB_FETCH
+            event.args["original_cmd"] = cmd
+            event.args["domain"] = domain
+            event.target = url
+            return [event]
+
+        return [event]
+
     def _parse_log_entry(self, data: dict) -> list[ActionEvent]:
         """Parse a real OpenClaw log entry, returning 0 or more ActionEvents."""
         msg0 = data.get("0", "")
@@ -236,7 +325,7 @@ class OpenClawLogParser:
                 self._pending_exec.target = cmd
                 event = self._pending_exec
                 self._pending_exec = None
-                return [event]
+                return self._enrich_exec_event(event)
             # Fallback: create event from scratch
             run_id = self._last_tool_run_id or "unknown"
             agent_id = self._resolve_agent(run_id) if run_id != "unknown" else "unknown"
@@ -244,7 +333,7 @@ class OpenClawLogParser:
                 inferred = self._infer_agent_from_path(cmd)
                 if inferred:
                     agent_id = inferred
-            events.append(ActionEvent(
+            fallback_event = ActionEvent(
                 ts=ts,
                 session_id=run_id,
                 agent_id=agent_id,
@@ -252,7 +341,8 @@ class OpenClawLogParser:
                 target=cmd,
                 args={"tool": "exec"},
                 source="openclaw_log",
-            ))
+            )
+            events.extend(self._enrich_exec_event(fallback_event))
             return events
 
         # 1. Tool start events: "embedded run tool start: runId=... tool=<type> ..."

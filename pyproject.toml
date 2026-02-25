@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "watchclaw"
-version = "0.1.0"
-description = "Runtime security monitor for AI Agents — Zeek for the AI Agent era"
+version = "0.1.3"
+description = "Behavioral monitoring for OpenClaw AI agents — research prototype"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [{name = "Eric Bao"}]
-keywords = ["ai", "agent", "security", "monitoring", "runtime"]
+keywords = ["ai", "agent", "security", "monitoring", "openclaw", "prompt-injection"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -24,6 +24,11 @@ requires-python = ">=3.11"
 dependencies = [
     "pyyaml>=6.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Baoxd123/watchclaw"
+Repository = "https://github.com/Baoxd123/watchclaw"
+"Bug Tracker" = "https://github.com/Baoxd123/watchclaw/issues"
 
 [project.optional-dependencies]
 dev = [

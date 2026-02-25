@@ -13,6 +13,7 @@ from watchclaw.models import (
     Decision,
     Signal,
 )
+from watchclaw.parser import _extract_file_from_exec, _extract_url_from_exec
 from watchclaw.taint import TaintTable, compute_file_sensitivity
 
 logger = logging.getLogger(__name__)
@@ -152,6 +153,18 @@ class AnomalyScorer:
                 resource_val += 0.4
             if sensitivity >= 0.5:
                 resource_val += 0.6
+        elif event.action_type == ActionType.EXEC:
+            # Analyze exec command string for sensitive file paths and URLs
+            exec_file = _extract_file_from_exec(event.target)
+            if exec_file:
+                exec_sensitivity = compute_file_sensitivity(exec_file)
+                if exec_sensitivity >= 0.5:
+                    resource_val += 0.6
+                if exec_file not in profile.common_files:
+                    resource_val += 0.4
+            exec_url = _extract_url_from_exec(event.target)
+            if exec_url:
+                resource_val += 0.3
         resource_val = min(1.0, resource_val)
         signals.append(Signal(
             name="resource_anomaly",

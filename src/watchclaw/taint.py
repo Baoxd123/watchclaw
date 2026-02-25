@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from watchclaw.models import ActionEvent, ActionType, TaintEntry, TaintLevel
+from watchclaw.parser import _extract_file_from_exec
 
 # Sensitivity scores by file extension
 _SENSITIVITY_MAP: dict[str, float] = {
@@ -115,6 +116,19 @@ class TaintTable:
                 sensitivity=0.5,
             )
         elif event.action_type == ActionType.EXEC:
+            # Check if exec command reads a sensitive file
+            exec_file = _extract_file_from_exec(event.target)
+            if exec_file:
+                file_sensitivity = compute_file_sensitivity(exec_file)
+                if file_sensitivity >= 0.5:
+                    level = TaintLevel.HIGH if file_sensitivity >= 0.9 else TaintLevel.MEDIUM
+                    self._entries[exec_file] = TaintEntry(
+                        source=exec_file,
+                        level=level,
+                        timestamp=event.ts,
+                        sensitivity=file_sensitivity,
+                    )
+                    return
             self._entries[f"exec:{event.target}"] = TaintEntry(
                 source=event.target,
                 level=TaintLevel.LOW,

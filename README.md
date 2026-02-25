@@ -71,7 +71,7 @@ watchclaw simulate --duration 25 --attack-ratio 0.2
 WatchClaw learns each agent's normal patterns — when they're active, which files they touch, which domains they request. A dev agent reading source files at 2pm is normal. The same agent reading `.env` at 3am after hours of user inactivity scores very differently.
 
 ### 6-Signal Anomaly Scoring
-Every action is scored against 6 independent signals: time anomaly, user idle time, rate bursts, resource sensitivity, destination novelty, and taint flow. Weights adapt per-agent — mark a false positive and the contributing signals are automatically dampened.
+Every action is scored against 6 independent signals: time anomaly, user idle time, rate bursts, resource sensitivity, destination novelty, and taint flow. Each agent learns its own behavioral baseline over time — signals are weighted against per-agent historical norms, not global averages.
 
 ### Taint Tracking with Exponential Decay
 When an agent reads `.env`, that data is "tainted." The taint decays exponentially (5-minute half-life) — a `curl` 30 seconds later is highly suspicious, but the same `curl` 20 minutes later barely registers. If the user explicitly approves a transfer, the taint is sanitized and the alert is suppressed.
@@ -89,7 +89,7 @@ Single actions are ambiguous. Sequences tell the story. WatchClaw detects multi-
 Zero-tolerance rules for known-bad patterns: obfuscated execution (`base64 -d | bash`), bulk credential sweeps, SSH key access, cognitive file tampering. Rules are defined in `configs/default-rules.yaml` and fully customizable.
 
 ### Independent Observer
-WatchClaw runs as a separate process. The monitored agent's LLM cannot influence WatchClaw's judgment — even a fully compromised agent cannot disable monitoring through its own tool calls.
+WatchClaw runs as a separate process. The monitored agent's LLM cannot influence WatchClaw's detection logic directly. Note: a compromised agent that executes `pkill watchclaw` via shell can terminate the monitor — process supervision (e.g., systemd, launchd) is recommended in production deployments.
 
 ---
 
@@ -101,7 +101,7 @@ WatchClaw runs as a separate process. The monitored agent's LLM cannot influence
 | Behavioral baseline per agent | **Yes** | No | No | No |
 | Sequence pattern detection | **Yes** | No | Partial | No |
 | Taint tracking with decay | **Yes** | No | No | No |
-| Semantic-level visibility | **Yes** | Partial | No | No |
+| Semantic-level visibility | **Partial** (exec layer) | Partial | No | No |
 | Resistant to prompt injection | **Yes** | No (can be hijacked) | N/A | N/A |
 
 ---
